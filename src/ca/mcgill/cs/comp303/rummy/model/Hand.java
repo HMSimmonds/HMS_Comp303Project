@@ -117,7 +117,7 @@ public class Hand implements Serializable
 	/**
 	 * @return A copy of the set of matched sets
 	 */
-	public Set<ICardSet> getMatchedSets()
+	public Set<ICardSet> getMatchedCards()
 	{
 		return Collections.unmodifiableSet(matched);
 	}
