@@ -1,5 +1,6 @@
 package ca.mcgill.cs.comp303.rummy.model;
 
+import java.util.ArrayList;
 import java.util.Set;
 import java.util.Collections;
 import java.util.Comparator;
@@ -9,6 +10,9 @@ import java.util.Random;
 import java.util.List;
 import java.util.LinkedList;
 import java.io.Serializable;
+
+import ca.mcgill.cs.comp303.rummy.model.Card.Rank;
+import ca.mcgill.cs.comp303.rummy.model.Card.Suit;
 
 /**
  * Models a hand of 10 cards. The hand is not sorted. Not threadsafe.
@@ -106,7 +110,8 @@ public class Hand implements Serializable
 	 */
 	public void clear()
 	{
-		// TODO
+		matched.clear();
+		unmatched.clear();
 	}
 	
 	/**
@@ -114,7 +119,7 @@ public class Hand implements Serializable
 	 */
 	public Set<ICardSet> getMatchedSets()
 	{
-		return null; // TODO
+		return Collections.unmodifiableSet(matched);
 	}
 	
 	/**
@@ -122,7 +127,7 @@ public class Hand implements Serializable
 	 */
 	public Set<Card> getUnmatchedCards()
 	{
-		return null; // TODO
+		return Collections.unmodifiableSet(unmatched);
 	}
 	
 	/**
@@ -130,7 +135,16 @@ public class Hand implements Serializable
 	 */
 	public int size()
 	{
-		return Integer.MAX_VALUE; // TODO
+		return getNumberOfMatchedCards() + unmatched.size();
+	}
+	
+	private int getNumberOfMatchedCards()
+	{
+		int num = 0;
+		for (ICardSet s: matched)
+			num += s.size();
+		
+		return num;
 	}
 	
 	/**
@@ -142,7 +156,12 @@ public class Hand implements Serializable
 	 */
 	public boolean contains( Card pCard )
 	{
-		return false; // TODO
+		for (ICardSet c : matched)
+		{
+			if (c.contains(pCard)) return true;
+		}
+		
+		return unmatched.contains(pCard);
 	}
 	
 	/**
@@ -150,7 +169,12 @@ public class Hand implements Serializable
 	 */
 	public int score()
 	{
-		return Integer.MAX_VALUE; // TODO
+		int score = 0;
+		
+		for (Card c : unmatched)
+			score += c.getScore();
+		
+		return score;
 	}
 	
 	/**
@@ -160,9 +184,26 @@ public class Hand implements Serializable
 	 * @throws HandException If the cards in pCard are not all unmatched
 	 * cards of the hand or if the group is not a valid group.
 	 */
-	public void createGroup( Set<Card> pCards )
+	public CardSet createGroup( Set<Card> pCards )
 	{
-		// TODO
+		if (pCards.size() < 3) throw new HandException("Group does not have at least 3 cards");
+		
+		int rank = -1;
+		for (Card c : pCards)
+		{
+			if (rank == -1) 
+				rank = c.getRank().ordinal();
+			
+			else if (rank != c.getRank().ordinal()) 
+				throw new HandException("Ranks are not the same");
+			
+			if (!unmatched.contains(c))
+				throw new HandException("Cards are not all unmatched");
+		}
+		
+		CardSet cardSet = new CardSet(true, pCards);
+		
+		return cardSet;
 	}
 	
 	/**
@@ -172,9 +213,22 @@ public class Hand implements Serializable
 	 * @throws HandException If the cards in pCard are not all unmatched
 	 * cards of the hand or if the group is not a valid group.
 	 */
-	public void createRun( Set<Card> pCards )
+	public CardSet createRun( Set<Card> pCards )
 	{
-		// TODO
+		if (pCards.size() < 3) throw new HandException("Run does not contain at least 3 cards");
+		
+		int suit = -1;
+		for (Card c : pCards)
+		{
+			if (suit == -1) suit = c.getSuit().ordinal();
+			else if (suit != c.getSuit().ordinal())
+				throw new HandException("Suits are not similar");
+			if (!unmatched.contains(c))
+				throw new HandException("Cards are not unmatched");
+		}
+		
+		CardSet cardSet = new CardSet(false, pCards);
+		return cardSet;
 	}
 	
 	/**
@@ -183,5 +237,219 @@ public class Hand implements Serializable
 	 */
 	public void autoMatch()
 	{
+		/* Put the matched cards back into the unmatched set */
+		for (ICardSet set : matched)
+			for (Card card : set)
+				unmatched.add(card);
+		
+		/* First compute the groups */
+		LinkedList<CardSet> groups = calculateGroups();
+		
+		/* Second, compute the runs */
+		LinkedList<CardSet> runs = calculateRuns();
+		
+		/* Select the best groups/runs, without conflict */
+		/* So you have two lists, groups and runs containing
+		 * the possible groups and runs.
+		 */
+		matched = getBestMatch(groups, runs);
 	}
+	
+	private LinkedList<CardSet> calculateGroups()
+	{
+		int[] map = new int[NUM_SUIT_CARDS];
+		
+		//get the number of each rank and place into map
+		for (Card c : unmatched)
+			map[c.getRank().ordinal()] += 1;
+		
+		LinkedList<CardSet> groups = new LinkedList<CardSet>();
+		
+		for (int i = 0; i < NUM_SUIT_CARDS; i++)
+		{
+			if (map[i] >= 3)
+			{
+				//must be a group
+				Set<Card> set = new HashSet<Card>();
+				
+				for (Card c : unmatched)
+					if (c.getRank().ordinal() == i) set.add(c);
+				
+				groups.add(createGroup(set));
+			}
+		}
+		
+		return groups;
+	}
+	
+	private LinkedList<CardSet> calculateRuns()
+	{
+		LinkedList<Card> spades = new LinkedList<Card>();
+		LinkedList<Card> hearts = new LinkedList<Card>();
+		LinkedList<Card> diamonds = new LinkedList<Card>();
+		LinkedList<Card> clubs = new LinkedList<Card>();
+		
+		LinkedList<CardSet> runs = new LinkedList<CardSet>();
+		
+		for (Card c: unmatched)
+		{
+			Suit suit = c.getSuit();
+			
+			if (suit == Suit.CLUBS) clubs.add(c);
+			else if (suit == Suit.DIAMONDS) diamonds.add(c);
+			else if (suit == Suit.HEARTS) hearts.add(c);
+			else spades.add(c);
+		}
+		
+		Collections.sort(spades);
+		Collections.sort(hearts);
+		Collections.sort(diamonds);
+		Collections.sort(clubs);
+		
+		LinkedList<LinkedList<Card>> lists = new LinkedList<LinkedList<Card>>();
+		lists.add(clubs);
+		lists.add(spades);
+		lists.add(diamonds);
+		lists.add(hearts);
+		
+		//get runs
+		for (LinkedList<Card> lc : lists)
+		{
+			Set<Card> cur = new HashSet<Card>();
+			Rank rank = null;
+			int runsCounter = 0;
+			
+			
+			for (Card c : lc)
+			{
+				if (rank == null) 
+				{
+					rank = c.getRank();
+					runsCounter = 1;
+				}
+				
+				else if (rank.ordinal() + runsCounter == c.getRank().ordinal())
+				{
+					if (runsCounter == 1) cur.add(new Card(rank, c.getSuit()));
+					cur.add(c);
+					runsCounter++;
+				}
+				else
+				{
+					if (runsCounter > 2) runs.add(createRun(cur));
+					
+					cur.clear();
+					rank = null;
+					runsCounter = 0;
+				}
+			}
+			
+			if (runsCounter > 2) runs.add(createRun(cur));
+		}
+		return runs;
+	}
+	
+	private Set<ICardSet> getBestMatch(LinkedList<CardSet> groups, LinkedList<CardSet> runs)
+	{
+		List<CardSet> merge = new LinkedList<CardSet>();
+		Set<ICardSet> ret = new HashSet<ICardSet>();
+		
+		// Sort groups and runs
+		merge.addAll(groups);
+		merge.addAll(runs);
+		Collections.sort(merge, new Comparator<CardSet>() {
+			public int compare(CardSet pCardSet1, CardSet pCardSet2)
+			{
+				return pCardSet2.getScore() - pCardSet1.getScore();
+			} 
+		});
+		
+		for (CardSet cardSet : merge)
+		{
+			boolean hasOverlap = false;
+			
+			for (Card card : cardSet)
+			{
+				for (ICardSet matchedCardSet : ret)
+				{
+					if (matchedCardSet.contains(card))
+					{
+						hasOverlap = true;
+					}
+				}
+			}
+			
+			// If no card has an overlap, add the card set
+			if (!hasOverlap) ret.add(cardSet);
+			
+			// and then remove the cards from the unmatched set
+			for (Card c : cardSet)
+			{
+				unmatched.remove(c);
+			}
+		}
+		
+		return ret;	
+	}
+	
+	public Set<Card> tryComplete(Set<ICardSet> pSet)
+	{
+		Set<Card> ret = new HashSet<Card>();
+		
+		for (Card c : unmatched)
+		{
+			for (ICardSet set : pSet)
+			{
+				if (set.isGroup())
+				{
+					// Group elements have the same rank
+					if (c.getRank().ordinal() == set.iterator().next().getRank().ordinal())
+						ret.add(c);
+				}
+				else
+				{
+					// Run elements have the same suit
+					if (c.getSuit().ordinal() == set.iterator().next().getSuit().ordinal())
+					{
+						List<Card> l = new ArrayList<Card>();
+						
+						// Transforms ICardSet into a list
+						for (Card card : set) l.add(card);
+						
+						Collections.sort(l);
+						
+						if (c.getRank().ordinal() == l.get(0).getRank().ordinal() - 1
+						 || c.getRank().ordinal() == l.get(l.size()-1).getRank().ordinal() - 1)
+							ret.add(c);
+					}
+				}
+			}
+		}
+		
+		return ret;
+	}
+	
+		private int numberOfMatchedCards()
+		{
+			int size = 0;
+			
+			for (ICardSet s : matched)
+			{
+				size += s.size();
+			}
+			
+			return size;
+		}
+		
+		public Card getDrawnCard()
+		{
+			return pickedCard;
+		}
+		
+		public void setDrawnCard(Card pCard)
+		{
+			pickedCard = pCard;
+		}
 }
+
+

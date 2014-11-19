@@ -47,6 +47,26 @@ public class CardSet extends HashSet<Card> implements ICardSet
 		return isGroup;
 	}
 	
+	public int getScore()
+	{
+		int score = 0;
+		for (Card c : aCards) score += c.getScore();
+		
+		return score;
+	}
 	
+	public String toString()
+	{
+		String returnVal = isGroup() ? "Group " : "Run ";
+		
+		returnVal = returnVal + "(" + size() + ") : ";
+		returnVal = returnVal + aCards;
+		
+		return returnVal;
+	}
 
+	public Iterator<Card> iterator()
+	{
+		return aCards.iterator();
+	}
 }
